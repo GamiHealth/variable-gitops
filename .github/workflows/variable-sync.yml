@@ -5,6 +5,7 @@ on:
     inputs:
       delete_missing:
         description: "Delete secrets and variables not in config.yaml?"
+        type: boolean
         required: false
         default: "false"
 
@@ -33,7 +34,7 @@ jobs:
       - name: Sync Variables
         env:
           GITHUB_TOKEN: ${{ secrets.ORG_PAT }}
-          ORG_NAME: your-org-name
+          ORG_NAME: GamiHealth
           DELETE_MISSING: ${{ github.event.inputs.delete_missing }}
         run: |
           echo "🔄 Syncing Variables..."
