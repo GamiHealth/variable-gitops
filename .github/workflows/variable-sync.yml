@@ -39,7 +39,9 @@ jobs:
           echo "🔄 Syncing Variables..."
           # Get current variables
           CURRENT_VARS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            https://api.github.com/orgs/$ORG_NAME/actions/variables | jq -r '.variables[].name')
+            https://api.github.com/orgs/$ORG_NAME/actions/variables | \
+            jq -r '.variables // [] | .[].name')
+
 
           # Create/Update variables
           for VAR in $(yq e '.variables | keys | .[]' config.yaml); do
@@ -80,7 +82,9 @@ jobs:
 
           # Get current secrets
           CURRENT_SECRETS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            https://api.github.com/orgs/$ORG_NAME/actions/secrets | jq -r '.secrets[].name')
+            https://api.github.com/orgs/$ORG_NAME/actions/secrets | \
+            jq -r '.secrets // [] | .[].name')
+
 
           # Create/Update secrets
           for SECRET in $(yq e '.secrets | keys | .[]' config.yaml); do
