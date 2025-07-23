@@ -2,49 +2,108 @@ name: Sync GitHub Org Secrets and Variables
 
 on:
   workflow_dispatch:
+    inputs:
+      delete_missing:
+        description: "Delete secrets and variables not in config.yaml?"
+        required: false
+        default: "false"
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout config
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup jq
-        run: sudo apt-get install jq -y
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Read config file and sync
+      - name: Load configuration
+        id: load_config
+        run: |
+          echo "Loading config.yaml..."
+          CONFIG_FILE="config.yaml"
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "❌ config.yaml not found"
+            exit 1
+          fi
+
+      - name: Sync Variables
         env:
           GITHUB_TOKEN: ${{ secrets.ORG_PAT }}
-          ORG_NAME: GamiHealth
+          ORG_NAME: your-org-name
+          DELETE_MISSING: ${{ github.event.inputs.delete_missing }}
         run: |
-          CONFIG_FILE="config.yaml"
+          echo "🔄 Syncing Variables..."
+          # Get current variables
+          CURRENT_VARS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            https://api.github.com/orgs/$ORG_NAME/actions/variables | jq -r '.variables[].name')
 
-          # Sync Variables
-          for VAR in $(yq e '.variables | keys | .[]' $CONFIG_FILE); do
-            VALUE=$(yq e ".variables[\"$VAR\"]" $CONFIG_FILE)
-            echo "Syncing variable: $VAR"
-            curl -X PUT \
+          # Create/Update variables
+          for VAR in $(yq e '.variables | keys | .[]' config.yaml); do
+            VALUE=$(yq e ".variables[\"$VAR\"]" config.yaml)
+            echo "🟢 Creating/Updating variable: $VAR"
+            curl -s -X PUT \
               -H "Authorization: token $GITHUB_TOKEN" \
               -H "Accept: application/vnd.github+json" \
               https://api.github.com/orgs/$ORG_NAME/actions/variables/$VAR \
               -d "{\"name\":\"$VAR\", \"value\":\"$VALUE\"}"
           done
 
-          # Sync Secrets (encrypted with org public key)
+          # Delete variables not in config.yaml
+          if [ "$DELETE_MISSING" == "true" ]; then
+            echo "🗑️ Deleting missing variables..."
+            for EXISTING_VAR in $CURRENT_VARS; do
+              if ! yq e ".variables | has(\"$EXISTING_VAR\")" config.yaml | grep -q true; then
+                echo "❌ Deleting variable: $EXISTING_VAR"
+                curl -s -X DELETE \
+                  -H "Authorization: token $GITHUB_TOKEN" \
+                  https://api.github.com/orgs/$ORG_NAME/actions/variables/$EXISTING_VAR
+              fi
+            done
+          fi
+
+      - name: Sync Secrets
+        env:
+          GITHUB_TOKEN: ${{ secrets.ORG_PAT }}
+          ORG_NAME: your-org-name
+          DELETE_MISSING: ${{ github.event.inputs.delete_missing }}
+        run: |
+          echo "🔄 Syncing Secrets..."
+          # Get public key for encryption
           PUBKEY_JSON=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
             https://api.github.com/orgs/$ORG_NAME/actions/secrets/public-key)
           PUBKEY=$(echo "$PUBKEY_JSON" | jq -r '.key')
           KEY_ID=$(echo "$PUBKEY_JSON" | jq -r '.key_id')
 
-          for SECRET in $(yq e '.secrets | keys | .[]' $CONFIG_FILE); do
-            VALUE=$(yq e ".secrets[\"$SECRET\"]" $CONFIG_FILE)
-            # Encrypt secret value
-            ENCRYPTED=$(echo -n "$VALUE" | openssl rsautl -encrypt -pubin -inkey <(echo "$PUBKEY") | base64 | tr -d '\n')
-            echo "Syncing secret: $SECRET"
-            curl -X PUT \
+          # Get current secrets
+          CURRENT_SECRETS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            https://api.github.com/orgs/$ORG_NAME/actions/secrets | jq -r '.secrets[].name')
+
+          # Create/Update secrets
+          for SECRET in $(yq e '.secrets | keys | .[]' config.yaml); do
+            VALUE=$(yq e ".secrets[\"$SECRET\"]" config.yaml)
+            ENCRYPTED=$(echo -n "$VALUE" | \
+              openssl pkeyutl -encrypt -pubin -inkey <(echo "$PUBKEY" | base64 -d) -pkeyopt rsa_padding_mode:pkcs1 | base64 -w0)
+            echo "🟢 Creating/Updating secret: $SECRET"
+            curl -s -X PUT \
               -H "Authorization: token $GITHUB_TOKEN" \
               -H "Accept: application/vnd.github+json" \
               https://api.github.com/orgs/$ORG_NAME/actions/secrets/$SECRET \
               -d "{\"encrypted_value\":\"$ENCRYPTED\", \"key_id\":\"$KEY_ID\"}"
           done
+
+          # Delete secrets not in config.yaml
+          if [ "$DELETE_MISSING" == "true" ]; then
+            echo "🗑️ Deleting missing secrets..."
+            for EXISTING_SECRET in $CURRENT_SECRETS; do
+              if ! yq e ".secrets | has(\"$EXISTING_SECRET\")" config.yaml | grep -q true; then
+                echo "❌ Deleting secret: $EXISTING_SECRET"
+                curl -s -X DELETE \
+                  -H "Authorization: token $GITHUB_TOKEN" \
+                  https://api.github.com/orgs/$ORG_NAME/actions/secrets/$EXISTING_SECRET
+              fi
+            done
+          fi
