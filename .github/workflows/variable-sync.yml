@@ -49,6 +49,8 @@ jobs:
             VAR=$(echo "$entry" | jq -r '.key')
             VALUE=$(echo "$entry" | jq -r '.value')
             echo "🔧 VAR: $VAR = $VALUE"
+            BODY=$(jq -n --arg name "$VAR" --arg value "$VALUE" '{name: $name, value: $value}')
+            echo "$BODY"
           done
 
       # - name: Sync Secrets from config.json
