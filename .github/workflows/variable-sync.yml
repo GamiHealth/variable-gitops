@@ -42,30 +42,37 @@ jobs:
         run: |
           echo "🔄 Syncing Variables..."
           # Get current variables
-          CURRENT_VARS=$(gh api -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" /orgs/ORG/actions/variables | \
+          CURRENT_VARS=$(curl -L \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/orgs/ORG/actions/variables | \
             jq -r '.variables // [] | .[].name')
+          
+          echo "CURRENT_VARS: $CURRENT_VARS"
 
 
           # Create/Update variables
           for VAR in $(yq e '.variables | keys | .[]' config.yaml); do
             VALUE=$(yq e ".variables[\"$VAR\"]" config.yaml)
+            echo "FOR VAR: $VAR there is VALUE: $VALUE"
 
             # Check if variable exists
             HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
               https://api.github.com/orgs/$ORG/actions/variables/$VAR)
 
             if [ "$HTTP_STATUS" -eq 200 ]; then
               echo "✏️ Updating variable: $VAR"
               curl -s -X PATCH \
-                -H "Authorization: token $GITHUB_TOKEN" \
+                -H "Authorization: Bearer $GITHUB_TOKEN" \
                 -H "Accept: application/vnd.github+json" \
                 https://api.github.com/orgs/$ORG/actions/variables/$VAR \
                 -d "{\"name\":\"$VAR\", \"value\":\"$VALUE\"}"
             elif [ "$HTTP_STATUS" -eq 404 ]; then
               echo "🆕 Creating variable: $VAR"
               curl -s -X PUT \
-                -H "Authorization: token $GITHUB_TOKEN" \
+                -H "Authorization: Bearer $GITHUB_TOKEN" \
                 -H "Accept: application/vnd.github+json" \
                 https://api.github.com/orgs/$ORG/actions/variables/$VAR \
                 -d "{\"name\":\"$VAR\", \"value\":\"$VALUE\"}"
