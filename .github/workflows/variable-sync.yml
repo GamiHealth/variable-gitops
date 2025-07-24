@@ -25,13 +25,14 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Load variables
-        id: load_variables
+      - name: Check config files
+        id: check-configs
         run: |
-          echo "Loading variables.json..."
-          CONFIG_FILE="variables.json"
-          if [ ! -f "$CONFIG_FILE" ]; then
-            echo "❌ variables.json not found"
+          echo "Checking config files..."
+          VAR_FILE="variables.json"
+          SECRETS_FILE="secrets.json"
+          if [ ! -f "$VAR_FILE"  || ! -f "$SECRETS_FILE" ]; then
+            echo "❌ one config file was not found. Stopping ..."
             exit 1
           fi
 
@@ -39,46 +40,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.ORG_PAT }}
         run: |
-          # CURRENT_VARS=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" \
-          #   https://api.github.com/orgs/GamiHealth/actions/variables)
-          # echo "Current VARS already present in Organization: $CURRENT_VARS"
           echo "Reading variables from variables.json"
+
+          # Use jq to iterate over each key-value pair.
           jq -c '. | to_entries[]' variables.json | while read -r entry; do
-            VAR=$(echo "$entry" | jq -r '.key')
-            VALUE=$(echo "$entry" | jq -r '.value')
-            echo "🔧 VAR: $VAR = $VALUE"
-            BODY=$(jq -n --arg name "$VAR" --arg value "$VALUE" --arg visibility "all" '{name: $name, value: $value, visibility: $visibility}')
+            # Extract the variable name and value from the JSON entry.
+            VAR_NAME=$(echo "$entry" | jq -r '.key')
+            VAR_VALUE=$(echo "$entry" | jq -r '.value')
 
-            # Check if variable exists
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" \
-              https://api.github.com/orgs/GamiHealth/actions/variables/$VAR)
+            echo "🔧 Syncing organization variable: $VAR_NAME"
 
-            if [ "$HTTP_STATUS" -eq 200 ]; then
-              echo "✏️ Var $VAR already exists. Updating..."
-              VAR_UPDATING_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" \
-                https://api.github.com/orgs/GamiHealth/actions/variables/$VAR \
-                -d "$BODY")
-              echo "$( [[ $VAR_UPDATING_STATUS -ge 200 && $VAR_UPDATING_STATUS -le 205 ]] && echo '✅' || ([[ $VAR_UPDATING_STATUS -ge 400 ]] && echo '❌' || echo 'ℹ️') ) Response code for $VAR update is: $VAR_UPDATING_STATUS"
-            elif [ "$HTTP_STATUS" -eq 404 ]; then
-              echo "🆕 Creating variable: $VAR"
-              VAR_CREATION_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" \
-                https://api.github.com/orgs/GamiHealth/actions/variables \
-                -d "$BODY")
-              echo "$( [[ $VAR_CREATION_STATUS -ge 200 && $VAR_CREATION_STATUS -le 205 ]] && echo '✅' || ([[ $VAR_CREATION_STATUS -ge 400 ]] && echo '❌' || echo 'ℹ️') ) Response code for $VAR update is: $VAR_UPDATING_STATUS"
-            else
-              echo "❌ Error checking variable $VAR (HTTP $HTTP_STATUS)"
-            fi
+            # Use 'gh variable set' to create or update the variable.
+            # It handles the API calls automatically.
+            # The --org flag targets organization variables.
+            gh variable set "$VAR_NAME" --body "$VAR_VALUE" --org "GamiHealth"
           done
 
-      - name: Load secrets
-        id: load_secrets
-        run: |
-          echo "Loading secrets.json..."
-          CONFIG_FILE="secrets.json"
-          if [ ! -f "$CONFIG_FILE" ]; then
-            echo "❌ secrets.json not found"
-            exit 1
-          fi
+          echo "✅ All variables have been synced successfully."
 
       - name: Sync Secrets from secrets.json
         env:
