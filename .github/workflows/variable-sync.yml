@@ -60,6 +60,7 @@ jobs:
             # Check if variable exists
             HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
               -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
               https://api.github.com/orgs/$ORG/actions/variables/$VAR)
 
             if [ "$HTTP_STATUS" -eq 200 ]; then
@@ -67,15 +68,17 @@ jobs:
               curl -s -X PATCH \
                 -H "Authorization: Bearer $GITHUB_TOKEN" \
                 -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
                 https://api.github.com/orgs/$ORG/actions/variables/$VAR \
-                -d "{\"name\":\"$VAR\", \"value\":\"$VALUE\"}"
+                -d '{"name":"$VAR","value":"$VALUE","visibility":"all"}'
             elif [ "$HTTP_STATUS" -eq 404 ]; then
               echo "🆕 Creating variable: $VAR"
-              curl -s -X PUT \
+              curl -s -X POST \
                 -H "Authorization: Bearer $GITHUB_TOKEN" \
                 -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
                 https://api.github.com/orgs/$ORG/actions/variables/$VAR \
-                -d "{\"name\":\"$VAR\", \"value\":\"$VALUE\"}"
+                -d '{"name":"$VAR","value":"$VALUE","visibility":"all"}'
             else
               echo "❌ Error checking variable $VAR (HTTP $HTTP_STATUS)"
             fi
