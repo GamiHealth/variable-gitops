@@ -51,6 +51,25 @@ jobs:
             echo "🔧 VAR: $VAR = $VALUE"
             BODY=$(jq -n --arg name "$VAR" --arg value "$VALUE" '{name: $name, value: $value}')
             echo "$BODY"
+
+            # Check if variable exists
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" \
+              https://api.github.com/orgs/GamiHealth/actions/variables/$VAR)
+            echo "HTTP_STATUS: $HTTP_STATUS"
+
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              echo "✏️ Updating variable: $VAR"
+              curl -s -X PATCH -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" \
+                https://api.github.com/orgs/GamiHealth/actions/variables/$VAR \
+                -d $BODY
+            elif [ "$HTTP_STATUS" -eq 404 ]; then
+              echo "🆕 Creating variable: $VAR"
+              curl -s -X POST -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" \
+                https://api.github.com/orgs/GamiHealth/actions/variables \
+                -d $BODY
+            else
+              echo "❌ Error checking variable $VAR (HTTP $HTTP_STATUS)"
+            fi
           done
 
       # - name: Sync Secrets from config.json
@@ -76,7 +95,7 @@ jobs:
       #     printenv
       #     echo "🔁 Syncing variables..."
       #     CURRENT_VARS=$(curl -s $HEADERS \
-      #       https://api.github.com/orgs/$ORG/actions/variables | jq -r '.variables // [] | .[].name')
+      #       https://api.github.com/orgs/GamiHealth/actions/variables | jq -r '.variables // [] | .[].name')
       #     echo "Current VARS already present in Organization: $CURRENT_VARS"
 
       #     jq -c '.variables | to_entries[]' $CONFIG_FILE | while read -r entry; do
@@ -86,18 +105,18 @@ jobs:
       #       echo "➡️ Syncing variable: $VAR"
 
       #       RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEADERS \
-      #         https://api.github.com/orgs/$ORG/actions/variables/$VAR)
+      #         https://api.github.com/orgs/GamiHealth/actions/variables/$VAR)
 
       #       BODY=$(jq -n --arg name "$VAR" --arg value "$VALUE" '{name: $name, value: $value}')
 
       #       if [ "$RESPONSE" = "200" ]; then
       #         echo "✏️ Updating $VAR"
       #         curl -s -X PATCH $HEADERS -d "$BODY" \
-      #           https://api.github.com/orgs/$ORG/actions/variables/$VAR
+      #           https://api.github.com/orgs/GamiHealth/actions/variables/$VAR
       #       else
       #         echo "🆕 Creating $VAR"
       #         curl -s -X POST $HEADERS -d "$BODY" \
-      #           https://api.github.com/orgs/$ORG/actions/variables
+      #           https://api.github.com/orgs/GamiHealth/actions/variables
       #       fi
       #     done
 
@@ -112,7 +131,7 @@ jobs:
           #     -H "Authorization: Bearer $GITHUB_TOKEN" \
           #     -H "Accept: application/vnd.github+json"
           #     -H "X-GitHub-Api-Version: 2022-11-28" \
-          #     https://api.github.com/orgs/$ORG/actions/variables/$VAR)
+          #     https://api.github.com/orgs/GamiHealth/actions/variables/$VAR)
 
           #   if [ "$HTTP_STATUS" -eq 200 ]; then
           #     echo "✏️ Updating variable: $VAR"
@@ -120,7 +139,7 @@ jobs:
           #       -H "Authorization: Bearer $GITHUB_TOKEN" \
           #       -H "Accept: application/vnd.github+json" \
           #       -H "X-GitHub-Api-Version: 2022-11-28" \
-          #       https://api.github.com/orgs/$ORG/actions/variables/$VAR \
+          #       https://api.github.com/orgs/GamiHealth/actions/variables/$VAR \
           #       -d '{"name":"$VAR","value":"$VALUE","visibility":"all"}'
           #   elif [ "$HTTP_STATUS" -eq 404 ]; then
           #     echo "🆕 Creating variable: $VAR"
@@ -128,7 +147,7 @@ jobs:
           #       -H "Authorization: Bearer $GITHUB_TOKEN" \
           #       -H "Accept: application/vnd.github+json" \
           #       -H "X-GitHub-Api-Version: 2022-11-28" \
-          #       https://api.github.com/orgs/$ORG/actions/variables \
+          #       https://api.github.com/orgs/GamiHealth/actions/variables \
           #       -d '{"name":"$VAR","value":"$VALUE","visibility":"all"}'
           #   else
           #     echo "❌ Error checking variable $VAR (HTTP $HTTP_STATUS)"
@@ -144,13 +163,13 @@ jobs:
       #     echo "🔄 Syncing Secrets..."
       #     # Get public key for encryption
       #     PUBKEY_JSON=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-      #       https://api.github.com/orgs/$ORG/actions/secrets/public-key)
+      #       https://api.github.com/orgs/GamiHealth/actions/secrets/public-key)
       #     PUBKEY=$(echo "$PUBKEY_JSON" | jq -r '.key')
       #     KEY_ID=$(echo "$PUBKEY_JSON" | jq -r '.key_id')
 
       #     # Get current secrets
       #     CURRENT_SECRETS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-      #       https://api.github.com/orgs/$ORG/actions/secrets | \
+      #       https://api.github.com/orgs/GamiHealth/actions/secrets | \
       #       jq -r '.secrets // [] | .[].name')
 
 
@@ -163,6 +182,6 @@ jobs:
       #       curl -s -X PUT \
       #         -H "Authorization: token $GITHUB_TOKEN" \
       #         -H "Accept: application/vnd.github+json" \
-      #         https://api.github.com/orgs/$ORG/actions/secrets/$SECRET \
+      #         https://api.github.com/orgs/GamiHealth/actions/secrets/$SECRET \
       #         -d "{\"encrypted_value\":\"$ENCRYPTED\", \"key_id\":\"$KEY_ID\"}"
       #     done
