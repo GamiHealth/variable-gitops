@@ -1,6 +1,9 @@
 name: Sync GitHub Org Secrets and Variables
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       delete_missing:
