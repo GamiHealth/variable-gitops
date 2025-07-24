@@ -20,6 +20,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+        ## NOT NEEDED ON SISAL
+      - name: Install GitHub CLI
+        uses: cli/gh-action@v2
+
+        ## NOT NEEDED ON SISAL
       - name: Install dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y jq
@@ -33,40 +38,52 @@ jobs:
             echo "❌ config.json not found"
             exit 1
           fi
+          echo "--- DEBUG ---"
+          cat config.json
 
-      - name: Sync Variables
-        env:
-          GITHUB_TOKEN: ${{ secrets.ORG_PAT }}
-          ORG: GamiHealth
-          DELETE_MISSING: ${{ github.event.inputs.delete_missing }}
-          HEADERS: '-H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28"'
+      - name: Print Variables from config.json
         run: |
-          echo "🔁 Syncing variables..."
-          CURRENT_VARS=$(curl -s $HEADERS \
-            https://api.github.com/orgs/$ORG/actions/variables | jq -r '.variables // [] | .[].name')
-          echo "Current VARS already present in Organization: $CURRENT_VARS"
-
-          jq -c '.variables | to_entries[]' $CONFIG_FILE | while read -r entry; do
+          echo "Reading variables from config.json"
+          jq -c '.variables | to_entries[]' config.json | while read -r entry; do
             VAR=$(echo "$entry" | jq -r '.key')
             VALUE=$(echo "$entry" | jq -r '.value')
-
-            echo "➡️ Syncing variable: $VAR"
-
-            RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEADERS \
-              https://api.github.com/orgs/$ORG/actions/variables/$VAR)
-
-            BODY=$(jq -n --arg name "$VAR" --arg value "$VALUE" '{name: $name, value: $value}')
-
-            if [ "$RESPONSE" = "200" ]; then
-              echo "✏️ Updating $VAR"
-              curl -s -X PATCH $HEADERS -d "$BODY" \
-                https://api.github.com/orgs/$ORG/actions/variables/$VAR
-            else
-              echo "🆕 Creating $VAR"
-              curl -s -X POST $HEADERS -d "$BODY" \
-                https://api.github.com/orgs/$ORG/actions/variables
-            fi
+            echo "🔧 VAR: $VAR = $VALUE"
           done
+
+      # - name: Sync Variables
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.ORG_PAT }}
+      #     ORG: GamiHealth
+      #     DELETE_MISSING: ${{ github.event.inputs.delete_missing }}
+      #     HEADERS: '-H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28"'
+      #   run: |
+      #     printenv
+      #     echo "🔁 Syncing variables..."
+      #     CURRENT_VARS=$(curl -s $HEADERS \
+      #       https://api.github.com/orgs/$ORG/actions/variables | jq -r '.variables // [] | .[].name')
+      #     echo "Current VARS already present in Organization: $CURRENT_VARS"
+
+      #     jq -c '.variables | to_entries[]' $CONFIG_FILE | while read -r entry; do
+      #       VAR=$(echo "$entry" | jq -r '.key')
+      #       VALUE=$(echo "$entry" | jq -r '.value')
+
+      #       echo "➡️ Syncing variable: $VAR"
+
+      #       RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEADERS \
+      #         https://api.github.com/orgs/$ORG/actions/variables/$VAR)
+
+      #       BODY=$(jq -n --arg name "$VAR" --arg value "$VALUE" '{name: $name, value: $value}')
+
+      #       if [ "$RESPONSE" = "200" ]; then
+      #         echo "✏️ Updating $VAR"
+      #         curl -s -X PATCH $HEADERS -d "$BODY" \
+      #           https://api.github.com/orgs/$ORG/actions/variables/$VAR
+      #       else
+      #         echo "🆕 Creating $VAR"
+      #         curl -s -X POST $HEADERS -d "$BODY" \
+      #           https://api.github.com/orgs/$ORG/actions/variables
+      #       fi
+      #     done
 
 
           # # Create/Update variables
