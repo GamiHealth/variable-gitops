@@ -70,6 +70,40 @@ jobs:
             fi
           done
 
+      - name: Load secrets
+        id: load_secrets
+        run: |
+          echo "Loading secrets.json..."
+          CONFIG_FILE="secrets.json"
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "❌ secrets.json not found"
+            exit 1
+          fi
+
+      - name: Sync Secrets from secrets.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.ORG_PAT }}
+        run: |
+          echo "Reading secrets from secrets.json"
+
+          # Use jq to iterate over each key-value pair in the JSON file.
+          jq -c '. | to_entries[]' secrets.json | while read -r entry; do
+            # Extract the secret name and value from the JSON entry.
+            SECRET_NAME=$(echo "$entry" | jq -r '.key')
+            SECRET_VALUE=$(echo "$entry" | jq -r '.value')
+
+            echo "🔐 Syncing organization secret: $SECRET_NAME"
+
+            # Use 'gh secret set' to create or update the secret.
+            # It handles encryption and API calls automatically.
+            # The value is piped to prevent it from appearing in shell history.
+            # The --org flag targets organization secrets.
+            echo "$SECRET_VALUE" | gh secret set "$SECRET_NAME" --org "GamiHealth" --body -
+          done
+
+          echo "✅ All secrets have been synced successfully."
+
+
       # - name: Sync Secrets from config.json
       #   env:
       #     GITHUB_TOKEN: ${{ secrets.ORG_PAT }}
