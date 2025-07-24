@@ -21,10 +21,6 @@ jobs:
         uses: actions/checkout@v4
 
         ## NOT NEEDED ON SISAL
-      - name: Install GitHub CLI
-        uses: cli/gh-action@v2
-
-        ## NOT NEEDED ON SISAL
       - name: Install dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y jq
@@ -48,6 +44,15 @@ jobs:
             VAR=$(echo "$entry" | jq -r '.key')
             VALUE=$(echo "$entry" | jq -r '.value')
             echo "🔧 VAR: $VAR = $VALUE"
+          done
+
+      - name: Print Secrets from config.json
+        run: |
+          echo "Reading secrets from config.json"
+          jq -c '.secrets | to_entries[]' config.json | while read -r entry; do
+            SECRET=$(echo "$entry" | jq -r '.key')
+            VALUE=$(echo "$entry" | jq -r '.value')
+            echo "🔒 SECRET: $SECRET = $VALUE"
           done
 
       # - name: Sync Variables
