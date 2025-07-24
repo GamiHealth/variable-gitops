@@ -46,22 +46,25 @@ jobs:
             https://api.github.com/orgs/$ORG/actions/variables | jq -r '.variables // [] | .[].name')
           echo "Current VARS already present in Organization: $CURRENT_VARS"
 
-          jq -r '.variables | to_entries[] | "\(.key) \(.value)"' $CONFIG_FILE | while read VAR VALUE; do
+          jq -c '.variables | to_entries[]' $CONFIG_FILE | while read -r entry; do
+            VAR=$(echo "$entry" | jq -r '.key')
+            VALUE=$(echo "$entry" | jq -r '.value')
+
             echo "➡️ Syncing variable: $VAR"
+
             RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEADERS \
               https://api.github.com/orgs/$ORG/actions/variables/$VAR)
 
             BODY=$(jq -n --arg name "$VAR" --arg value "$VALUE" '{name: $name, value: $value}')
+
             if [ "$RESPONSE" = "200" ]; then
               echo "✏️ Updating $VAR"
-              curl -s -X PATCH $HEADERS \
-                -d "$BODY" \
+              curl -s -X PATCH $HEADERS -d "$BODY" \
                 https://api.github.com/orgs/$ORG/actions/variables/$VAR
             else
               echo "🆕 Creating $VAR"
-              curl -s -X POST $HEADERS \
-                -d "$BODY" \
-                https://api.github.com/orgs/$ORG/actions/variables/$VAR
+              curl -s -X POST $HEADERS -d "$BODY" \
+                https://api.github.com/orgs/$ORG/actions/variables
             fi
           done
 
