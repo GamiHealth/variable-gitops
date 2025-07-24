@@ -39,7 +39,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.ORG_PAT }}
           ORG: GamiHealth
           DELETE_MISSING: ${{ github.event.inputs.delete_missing }}
-          HEADERS: -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28"
+          HEADERS: '-H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28"'
         run: |
           echo "🔁 Syncing variables..."
           CURRENT_VARS=$(curl -s $HEADERS \
