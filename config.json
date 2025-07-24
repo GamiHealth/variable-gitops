@@ -1,8 +1,8 @@
 {
   "variables": {
-    "APP_ENV": "production",
+    "APP_ENV": "develop",
     "FEATURE_FLAG": "true",
-    "MAX_CONNECTIONS": "100"
+    "MAX_CONNECTIONS": "135"
   },
   "secrets": {
     "DB_PASSWORD": "supersecretpassword",
