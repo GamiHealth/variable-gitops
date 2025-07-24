@@ -37,8 +37,15 @@ jobs:
           echo "--- DEBUG ---"
           cat config.json
 
-      - name: Print Variables from config.json
+      - name: Sync Variables from config.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.ORG_PAT }}
+          ORG: GamiHealth
+          HEADERS: '-H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28"'
         run: |
+          CURRENT_VARS=$(curl -s $HEADERS \
+            https://api.github.com/orgs/$ORG/actions/variables)
+          echo "Current VARS already present in Organization: $CURRENT_VARS"
           echo "Reading variables from config.json"
           jq -c '.variables | to_entries[]' config.json | while read -r entry; do
             VAR=$(echo "$entry" | jq -r '.key')
@@ -46,7 +53,11 @@ jobs:
             echo "🔧 VAR: $VAR = $VALUE"
           done
 
-      - name: Print Secrets from config.json
+      - name: Sync Secrets from config.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.ORG_PAT }}
+          ORG: GamiHealth
+          HEADERS: '-H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28"'
         run: |
           echo "Reading secrets from config.json"
           jq -c '.secrets | to_entries[]' config.json | while read -r entry; do
