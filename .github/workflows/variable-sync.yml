@@ -27,10 +27,10 @@ jobs:
       - name: Load configuration
         id: load_config
         run: |
-          echo "Loading config.yaml..."
-          CONFIG_FILE="config.yaml"
+          echo "Loading config.json..."
+          CONFIG_FILE="config.json"
           if [ ! -f "$CONFIG_FILE" ]; then
-            echo "❌ config.yaml not found"
+            echo "❌ config.json not found"
             exit 1
           fi
 
@@ -39,49 +39,65 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.ORG_PAT }}
           ORG: GamiHealth
           DELETE_MISSING: ${{ github.event.inputs.delete_missing }}
+          HEADERS: -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28"
         run: |
-          echo "🔄 Syncing Variables..."
-          # Get current variables
-          CURRENT_VARS=$(curl -L \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/orgs/ORG/actions/variables | \
-            jq -r '.variables // [] | .[].name')
-          
+          echo "🔁 Syncing variables..."
+          CURRENT_VARS=$(curl -s $HEADERS \
+            https://api.github.com/orgs/$ORG/actions/variables | jq -r '.variables // [] | .[].name')
           echo "Current VARS already present in Organization: $CURRENT_VARS"
 
-          # Create/Update variables
-          for VAR in $(yq e -o=json '.variables | keys | .[]' config.yaml); do
-            VALUE=$(yq e -o=json ".variables[\"$VAR\"]" config.yaml)
-            echo "Trying to create/update VAR: $VAR with VALUE: $VALUE"
-
-            # Check if variable exists
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              -H "Authorization: Bearer $GITHUB_TOKEN" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
+          jq -r '.variables | to_entries[] | "\(.key) \(.value)"' $CONFIG_FILE | while read VAR VALUE; do
+            echo "➡️ Syncing variable: $VAR"
+            RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEADERS \
               https://api.github.com/orgs/$ORG/actions/variables/$VAR)
 
-            if [ "$HTTP_STATUS" -eq 200 ]; then
-              echo "✏️ Updating variable: $VAR"
-              curl -s -X PATCH \
-                -H "Authorization: Bearer $GITHUB_TOKEN" \
-                -H "Accept: application/vnd.github+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                https://api.github.com/orgs/$ORG/actions/variables/$VAR \
-                -d '{"name":"$VAR","value":"$VALUE","visibility":"all"}'
-            elif [ "$HTTP_STATUS" -eq 404 ]; then
-              echo "🆕 Creating variable: $VAR"
-              curl -s -X POST \
-                -H "Authorization: Bearer $GITHUB_TOKEN" \
-                -H "Accept: application/vnd.github+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                https://api.github.com/orgs/$ORG/actions/variables \
-                -d '{"name":"$VAR","value":"$VALUE","visibility":"all"}'
+            BODY=$(jq -n --arg name "$VAR" --arg value "$VALUE" '{name: $name, value: $value}')
+            if [ "$RESPONSE" = "200" ]; then
+              echo "✏️ Updating $VAR"
+              curl -s -X PATCH $HEADERS \
+                -d "$BODY" \
+                https://api.github.com/orgs/$ORG/actions/variables/$VAR
             else
-              echo "❌ Error checking variable $VAR (HTTP $HTTP_STATUS)"
+              echo "🆕 Creating $VAR"
+              curl -s -X POST $HEADERS \
+                -d "$BODY" \
+                https://api.github.com/orgs/$ORG/actions/variables/$VAR
             fi
           done
+
+
+          # # Create/Update variables
+          # for VAR in $(yq e -o=json '.variables | keys | .[]' config.yaml); do
+          #   VALUE=$(yq e -o=json ".variables[\"$VAR\"]" config.yaml)
+          #   echo "Trying to create/update VAR: $VAR with VALUE: $VALUE"
+
+          #   # Check if variable exists
+          #   HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+          #     -H "Authorization: Bearer $GITHUB_TOKEN" \
+          #     -H "Accept: application/vnd.github+json"
+          #     -H "X-GitHub-Api-Version: 2022-11-28" \
+          #     https://api.github.com/orgs/$ORG/actions/variables/$VAR)
+
+          #   if [ "$HTTP_STATUS" -eq 200 ]; then
+          #     echo "✏️ Updating variable: $VAR"
+          #     curl -s -X PATCH \
+          #       -H "Authorization: Bearer $GITHUB_TOKEN" \
+          #       -H "Accept: application/vnd.github+json" \
+          #       -H "X-GitHub-Api-Version: 2022-11-28" \
+          #       https://api.github.com/orgs/$ORG/actions/variables/$VAR \
+          #       -d '{"name":"$VAR","value":"$VALUE","visibility":"all"}'
+          #   elif [ "$HTTP_STATUS" -eq 404 ]; then
+          #     echo "🆕 Creating variable: $VAR"
+          #     curl -s -X POST \
+          #       -H "Authorization: Bearer $GITHUB_TOKEN" \
+          #       -H "Accept: application/vnd.github+json" \
+          #       -H "X-GitHub-Api-Version: 2022-11-28" \
+          #       https://api.github.com/orgs/$ORG/actions/variables \
+          #       -d '{"name":"$VAR","value":"$VALUE","visibility":"all"}'
+          #   else
+          #     echo "❌ Error checking variable $VAR (HTTP $HTTP_STATUS)"
+          #   fi
+          # done
 
       # - name: Sync Secrets
       #   env:

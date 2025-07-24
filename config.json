@@ -1,0 +1,12 @@
+{
+  "variables": {
+    "APP_ENV": "production",
+    "FEATURE_FLAG": "true",
+    "MAX_CONNECTIONS": "100"
+  },
+  "secrets": {
+    "DB_PASSWORD": "supersecretpassword",
+    "API_KEY": "1234567890abcdef",
+    "SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+  }
+}
