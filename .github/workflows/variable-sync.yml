@@ -49,7 +49,7 @@ jobs:
             VAR=$(echo "$entry" | jq -r '.key')
             VALUE=$(echo "$entry" | jq -r '.value')
             echo "🔧 VAR: $VAR = $VALUE"
-            BODY=$(jq -n --arg name "$VAR" --arg value "$VALUE" '{name: $name, value: $value}')
+            BODY=$(jq -n --arg name "$VAR" --arg value "$VALUE" --arg visibility "all" '{name: $name, value: $value, visibility: $visibility}')
             echo "$BODY"
 
             # Check if variable exists
