@@ -49,13 +49,12 @@ jobs:
             https://api.github.com/orgs/ORG/actions/variables | \
             jq -r '.variables // [] | .[].name')
           
-          echo "CURRENT_VARS: $CURRENT_VARS"
-
+          echo "Current VARS already present in Organization: $CURRENT_VARS"
 
           # Create/Update variables
           for VAR in $(yq e '.variables | keys | .[]' config.yaml); do
             VALUE=$(yq e ".variables[\"$VAR\"]" config.yaml)
-            echo "FOR VAR: $VAR there is VALUE: $VALUE"
+            echo "Trying to create/update VAR: $VAR with VALUE: $VALUE"
 
             # Check if variable exists
             HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
@@ -77,7 +76,7 @@ jobs:
                 -H "Authorization: Bearer $GITHUB_TOKEN" \
                 -H "Accept: application/vnd.github+json" \
                 -H "X-GitHub-Api-Version: 2022-11-28" \
-                https://api.github.com/orgs/$ORG/actions/variables/$VAR \
+                https://api.github.com/orgs/$ORG/actions/variables \
                 -d '{"name":"$VAR","value":"$VALUE","visibility":"all"}'
             else
               echo "❌ Error checking variable $VAR (HTTP $HTTP_STATUS)"
