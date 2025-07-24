@@ -31,8 +31,12 @@ jobs:
           echo "Checking config files..."
           VAR_FILE="variables.json"
           SECRETS_FILE="secrets.json"
-          if [ ! -f "$VAR_FILE"  || ! -f "$SECRETS_FILE" ]; then
-            echo "❌ one config file was not found. Stopping ..."
+          if [ ! -f "$VAR_FILE" ]; then
+            echo "❌ variables.json file was not found. Stopping workflow execution."
+            exit 1
+          fi
+          if [ ! -f "$SECRETS_FILE" ]; then
+            echo "❌ secrets.json file was not found. Stopping workflow execution."
             exit 1
           fi
 
@@ -80,118 +84,3 @@ jobs:
           done
 
           echo "✅ All secrets have been synced successfully."
-
-
-      # - name: Sync Secrets from config.json
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.ORG_PAT }}
-      #     ORG: GamiHealth
-      #   run: |
-      #     HEADERS: '-H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28"'
-      #     echo "Reading secrets from config.json"
-      #     jq -c '.secrets | to_entries[]' config.json | while read -r entry; do
-      #       SECRET=$(echo "$entry" | jq -r '.key')
-      #       VALUE=$(echo "$entry" | jq -r '.value')
-      #       echo "🔒 SECRET: $SECRET = $VALUE"
-      #     done
-
-      # - name: Sync Variables
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.ORG_PAT }}
-      #     ORG: GamiHealth
-      #     DELETE_MISSING: ${{ github.event.inputs.delete_missing }}
-      #     HEADERS: '-H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28"'
-      #   run: |
-      #     printenv
-      #     echo "🔁 Syncing variables..."
-      #     CURRENT_VARS=$(curl -s $HEADERS \
-      #       https://api.github.com/orgs/GamiHealth/actions/variables | jq -r '.variables // [] | .[].name')
-      #     echo "Current VARS already present in Organization: $CURRENT_VARS"
-
-      #     jq -c '.variables | to_entries[]' $CONFIG_FILE | while read -r entry; do
-      #       VAR=$(echo "$entry" | jq -r '.key')
-      #       VALUE=$(echo "$entry" | jq -r '.value')
-
-      #       echo "➡️ Syncing variable: $VAR"
-
-      #       RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEADERS \
-      #         https://api.github.com/orgs/GamiHealth/actions/variables/$VAR)
-
-      #       BODY=$(jq -n --arg name "$VAR" --arg value "$VALUE" '{name: $name, value: $value}')
-
-      #       if [ "$RESPONSE" = "200" ]; then
-      #         echo "✏️ Updating $VAR"
-      #         curl -s -X PATCH $HEADERS -d "$BODY" \
-      #           https://api.github.com/orgs/GamiHealth/actions/variables/$VAR
-      #       else
-      #         echo "🆕 Creating $VAR"
-      #         curl -s -X POST $HEADERS -d "$BODY" \
-      #           https://api.github.com/orgs/GamiHealth/actions/variables
-      #       fi
-      #     done
-
-
-          # # Create/Update variables
-          # for VAR in $(yq e -o=json '.variables | keys | .[]' config.yaml); do
-          #   VALUE=$(yq e -o=json ".variables[\"$VAR\"]" config.yaml)
-          #   echo "Trying to create/update VAR: $VAR with VALUE: $VALUE"
-
-          #   # Check if variable exists
-          #   HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-          #     -H "Authorization: Bearer $GITHUB_TOKEN" \
-          #     -H "Accept: application/vnd.github+json"
-          #     -H "X-GitHub-Api-Version: 2022-11-28" \
-          #     https://api.github.com/orgs/GamiHealth/actions/variables/$VAR)
-
-          #   if [ "$HTTP_STATUS" -eq 200 ]; then
-          #     echo "✏️ Updating variable: $VAR"
-          #     curl -s -X PATCH \
-          #       -H "Authorization: Bearer $GITHUB_TOKEN" \
-          #       -H "Accept: application/vnd.github+json" \
-          #       -H "X-GitHub-Api-Version: 2022-11-28" \
-          #       https://api.github.com/orgs/GamiHealth/actions/variables/$VAR \
-          #       -d '{"name":"$VAR","value":"$VALUE","visibility":"all"}'
-          #   elif [ "$HTTP_STATUS" -eq 404 ]; then
-          #     echo "🆕 Creating variable: $VAR"
-          #     curl -s -X POST \
-          #       -H "Authorization: Bearer $GITHUB_TOKEN" \
-          #       -H "Accept: application/vnd.github+json" \
-          #       -H "X-GitHub-Api-Version: 2022-11-28" \
-          #       https://api.github.com/orgs/GamiHealth/actions/variables \
-          #       -d '{"name":"$VAR","value":"$VALUE","visibility":"all"}'
-          #   else
-          #     echo "❌ Error checking variable $VAR (HTTP $HTTP_STATUS)"
-          #   fi
-          # done
-
-      # - name: Sync Secrets
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.ORG_PAT }}
-      #     ORG: GamiHealth
-      #     DELETE_MISSING: ${{ github.event.inputs.delete_missing }}
-      #   run: |
-      #     echo "🔄 Syncing Secrets..."
-      #     # Get public key for encryption
-      #     PUBKEY_JSON=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-      #       https://api.github.com/orgs/GamiHealth/actions/secrets/public-key)
-      #     PUBKEY=$(echo "$PUBKEY_JSON" | jq -r '.key')
-      #     KEY_ID=$(echo "$PUBKEY_JSON" | jq -r '.key_id')
-
-      #     # Get current secrets
-      #     CURRENT_SECRETS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-      #       https://api.github.com/orgs/GamiHealth/actions/secrets | \
-      #       jq -r '.secrets // [] | .[].name')
-
-
-      #     # Create/Update secrets
-      #     for SECRET in $(yq e -o=json '.secrets | keys | .[]' config.yaml); do
-      #       VALUE=$(yq e -o=json ".secrets[\"$SECRET\"]" config.yaml)
-      #       ENCRYPTED=$(echo -n "$VALUE" | \
-      #         openssl pkeyutl -encrypt -pubin -inkey <(echo "$PUBKEY" | base64 -d) -pkeyopt rsa_padding_mode:pkcs1 | base64 -w0)
-      #       echo "🟢 Creating/Updating secret: $SECRET"
-      #       curl -s -X PUT \
-      #         -H "Authorization: token $GITHUB_TOKEN" \
-      #         -H "Accept: application/vnd.github+json" \
-      #         https://api.github.com/orgs/GamiHealth/actions/secrets/$SECRET \
-      #         -d "{\"encrypted_value\":\"$ENCRYPTED\", \"key_id\":\"$KEY_ID\"}"
-      #     done
