@@ -52,8 +52,8 @@ jobs:
           echo "Current VARS already present in Organization: $CURRENT_VARS"
 
           # Create/Update variables
-          for VAR in $(yq e '.variables | keys | .[]' config.yaml); do
-            VALUE=$(yq e ".variables[\"$VAR\"]" config.yaml)
+          for VAR in $(yq e -o=json '.variables | keys | .[]' config.yaml); do
+            VALUE=$(yq e -o=json ".variables[\"$VAR\"]" config.yaml)
             echo "Trying to create/update VAR: $VAR with VALUE: $VALUE"
 
             # Check if variable exists
@@ -103,8 +103,8 @@ jobs:
 
 
       #     # Create/Update secrets
-      #     for SECRET in $(yq e '.secrets | keys | .[]' config.yaml); do
-      #       VALUE=$(yq e ".secrets[\"$SECRET\"]" config.yaml)
+      #     for SECRET in $(yq e -o=json '.secrets | keys | .[]' config.yaml); do
+      #       VALUE=$(yq e -o=json ".secrets[\"$SECRET\"]" config.yaml)
       #       ENCRYPTED=$(echo -n "$VALUE" | \
       #         openssl pkeyutl -encrypt -pubin -inkey <(echo "$PUBKEY" | base64 -d) -pkeyopt rsa_padding_mode:pkcs1 | base64 -w0)
       #       echo "🟢 Creating/Updating secret: $SECRET"
