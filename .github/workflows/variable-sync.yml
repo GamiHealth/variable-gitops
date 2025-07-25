@@ -116,7 +116,7 @@ jobs:
 
   cleanup-stale-items:
     # This job only runs if the user explicitly enables it.
-    if: github.event.inputs.enable_cleanup == true
+    if: ${{ github.event.inputs.enable_cleanup == true }}
     needs: [sync] # Assumes your previous jobs are named this
     runs-on: ubuntu-latest
     env:
