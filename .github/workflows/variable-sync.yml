@@ -3,16 +3,16 @@ name: Sync GitHub Org Secrets and Variables
 on:
   workflow_dispatch:
     inputs:
-      enable_cleanup:
-        type: boolean
-        description: '⚠️ DANGER: Delete secrets/variables not in JSON files'
-        required: true
-        default: false
       dry_run:
         type: boolean
-        description: 'Dry run'
+        description: 'DRY RUN'
         required: true
         default: true
+      enable_cleanup:
+        type: boolean
+        description: '⚠️ DANGER: Enable CLEANUP'
+        required: true
+        default: false
 
 jobs:
   sync:
@@ -116,8 +116,8 @@ jobs:
 
   cleanup-stale-items:
     # This job only runs if the user explicitly enables it.
-    if: ${{ github.event.inputs.enable_cleanup == true }}
-    needs: [sync] # Assumes your previous jobs are named this
+    if: ${{ inputs.enable_cleanup == true }}
+    needs: sync # Assumes your previous jobs are named this
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.ORG_PAT }}
@@ -127,6 +127,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Cleanup Stale Organization Secrets
+        if: github.event.inputs.enable_cleanup == true
         run: |
           echo "### Starting Secret Cleanup ###"
           
