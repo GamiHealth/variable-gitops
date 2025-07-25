@@ -6,16 +6,23 @@ on:
       - main
   workflow_dispatch:
     inputs:
-      delete_missing:
+      enable_cleanup:
         type: boolean
-        description: "Delete secrets and variables not present in config files?"
-        required: false
+        description: '⚠️ DANGER: Delete secrets/variables not in JSON files'
+        required: true
         default: false
+      dry_run:
+        type: boolean
+        description: 'Log actions without deleting. (Strongly recommended for cleanup)'
+        required: true
+        default: true
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-
+    env:
+      GH_TOKEN: ${{ secrets.ORG_PAT }}
+      ORG_NAME: "GamiHealth" # Your organization name
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -41,46 +48,156 @@ jobs:
           fi
 
       - name: Sync Variables from variables.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.ORG_PAT }}
         run: |
-          echo "Reading variables from variables.json"
+          echo "### Syncing Variables ###"
+          
+          # If dry_run is true, simulate the changes
+          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            echo "DRY RUN MODE: Checking which variables would be created or updated."
+            
+            # Get all remote variables once to avoid multiple API calls
+            REMOTE_VARS=$(gh variable list --org "$ORG_NAME" --json name,value)
 
-          # Use jq to iterate over each key-value pair.
-          jq -c '. | to_entries[]' variables.json | while read -r entry; do
-            # Extract the variable name and value from the JSON entry.
-            VAR_NAME=$(echo "$entry" | jq -r '.key')
-            VAR_VALUE=$(echo "$entry" | jq -r '.value')
+            jq -c '. | to_entries[]' variables.json | while read -r entry; do
+              VAR_NAME=$(echo "$entry" | jq -r '.key')
+              VAR_VALUE=$(echo "$entry" | jq -r '.value')
+              
+              # Check if the variable exists remotely
+              REMOTE_VALUE=$(echo "$REMOTE_VARS" | jq -r --arg name "$VAR_NAME" '.[] | select(.name == $name) | .value')
 
-            echo "🔧 Syncing organization variable: $VAR_NAME"
-
-            # Use 'gh variable set' to create or update the variable.
-            # It handles the API calls automatically.
-            # The --org flag targets organization variables.
-            gh variable set "$VAR_NAME" --body "$VAR_VALUE" --org "GamiHealth"
-          done
-
-          echo "✅ All variables have been synced successfully."
+              if [ -z "$REMOTE_VALUE" ]; then
+                echo "DRY RUN: Would CREATE variable '$VAR_NAME'"
+              elif [ "$VAR_VALUE" != "$REMOTE_VALUE" ]; then
+                echo "DRY RUN: Would UPDATE variable '$VAR_NAME' (values differ)"
+              else
+                echo "DRY RUN: Variable '$VAR_NAME' is already up to date."
+              fi
+            done
+          
+          # Otherwise, apply the changes
+          else
+            echo "APPLY MODE: Creating or updating variables."
+            jq -c '. | to_entries[]' variables.json | while read -r entry; do
+              VAR_NAME=$(echo "$entry" | jq -r '.key')
+              VAR_VALUE=$(echo "$entry" | jq -r '.value')
+              echo "🔧 Syncing organization variable: $VAR_NAME"
+              gh variable set "$VAR_NAME" --body "$VAR_VALUE" --org "$ORG_NAME"
+            done
+            echo "✅ All variables have been synced successfully."
+          fi
 
       - name: Sync Secrets from secrets.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.ORG_PAT }}
         run: |
-          echo "Reading secrets from secrets.json"
+          echo "### Syncing Secrets ###"
 
-          # Use jq to iterate over each key-value pair in the JSON file.
-          jq -c '. | to_entries[]' secrets.json | while read -r entry; do
-            # Extract the secret name and value from the JSON entry.
-            SECRET_NAME=$(echo "$entry" | jq -r '.key')
-            SECRET_VALUE=$(echo "$entry" | jq -r '.value')
+          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            echo "DRY RUN MODE: Checking which secrets would be created or updated."
 
-            echo "🔐 Syncing organization secret: $SECRET_NAME"
+            # Get the list of remote secret names
+            REMOTE_SECRETS=$(gh secret list --org "$ORG_NAME" --json name -q '.[].name' | sort)
 
-            # Use 'gh secret set' to create or update the secret.
-            # It handles encryption and API calls automatically.
-            # The value is piped to prevent it from appearing in shell history.
-            # The --org flag targets organization secrets.
-            echo "$SECRET_VALUE" | gh secret set "$SECRET_NAME" --org "GamiHealth" --body -
-          done
+            jq -r 'keys | .[]' secrets.json | while read -r SECRET_NAME; do
+              # Check if the secret exists remotely
+              if echo "$REMOTE_SECRETS" | grep -q "^${SECRET_NAME}$"; then
+                # Note: We can't check secret values, so we just report an update.
+                echo "DRY RUN: Would UPDATE secret '$SECRET_NAME'."
+              else
+                echo "DRY RUN: Would CREATE secret '$SECRET_NAME'."
+              fi
+            done
 
-          echo "✅ All secrets have been synced successfully."
+          else
+            echo "APPLY MODE: Creating or updating secrets."
+            jq -c '. | to_entries[]' secrets.json | while read -r entry; do
+              SECRET_NAME=$(echo "$entry" | jq -r '.key')
+              SECRET_VALUE=$(echo "$entry" | jq -r '.value')
+              echo "🔐 Syncing organization secret: $SECRET_NAME"
+              echo "$SECRET_VALUE" | gh secret set "$SECRET_NAME" --org "$ORG_NAME" --body -
+            done
+            echo "✅ All secrets have been synced successfully."
+          fi
+
+  cleanup-stale-items:
+    # This job only runs if the user explicitly enables it.
+    if: github.event.inputs.enable_cleanup == true
+    needs: [sync] # Assumes your previous jobs are named this
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.ORG_PAT }}
+      ORG_NAME: "GamiHealth" # Your organization name
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cleanup Stale Organization Secrets
+        run: |
+          echo "### Starting Secret Cleanup ###"
+          
+          # 1. Get secrets defined in the local file
+          LOCAL_SECRETS=$(jq -r 'keys | .[]' secrets.json | sort)
+          
+          # 2. Get secrets that currently exist in the GitHub organization
+          REMOTE_SECRETS=$(gh secret list --org "$ORG_NAME" --json name -q '.[].name' | sort)
+          
+          # 3. Find secrets that exist remotely but not locally (using 'comm' utility)
+          STALE_SECRETS=$(comm -13 <(echo "$LOCAL_SECRETS") <(echo "$REMOTE_SECRETS"))
+          
+          if [ -z "$STALE_SECRETS" ]; then
+            echo "✅ No stale secrets found. All good!"
+            exit 0
+          fi
+          
+          echo "Found the following stale secrets to be deleted:"
+          echo "$STALE_SECRETS"
+          
+          # 4. Sanity Check: Fail if we are about to delete more than 5 secrets
+          # This prevents accidental mass-deletion. Adjust the threshold as needed.
+          STALE_COUNT=$(echo "$STALE_SECRETS" | wc -l)
+          if [ "$STALE_COUNT" -gt 5 ]; then
+            echo "❌ SAFETY NET: Attempting to delete $STALE_COUNT secrets, which is over the threshold of 5. Aborting."
+            exit 1
+          fi
+
+          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            echo "DRY RUN: Would have deleted the secrets listed above. No changes made."
+          else
+            echo "APPLY MODE: Deleting stale secrets..."
+            echo "$STALE_SECRETS" | while read -r secret; do
+              gh secret delete "$secret" --org "$ORG_NAME"
+              echo "Deleted secret: $secret"
+            done
+            echo "✅ Cleanup complete."
+          fi
+
+      - name: Cleanup Stale Organization Variables
+        run: |
+          echo "### Starting Variable Cleanup ###"
+          
+          LOCAL_VARS=$(jq -r 'keys | .[]' variables.json | sort)
+          REMOTE_VARS=$(gh variable list --org "$ORG_NAME" --json name -q '.[].name' | sort)
+          STALE_VARS=$(comm -13 <(echo "$LOCAL_VARS") <(echo "$REMOTE_VARS"))
+
+          if [ -z "$STALE_VARS" ]; then
+            echo "✅ No stale variables found. All good!"
+            exit 0
+          fi
+
+          echo "Found the following stale variables to be deleted:"
+          echo "$STALE_VARS"
+          
+          STALE_COUNT=$(echo "$STALE_VARS" | wc -l)
+          if [ "$STALE_COUNT" -gt 5 ]; then
+            echo "❌ SAFETY NET: Attempting to delete $STALE_COUNT variables, which is over the threshold of 5. Aborting."
+            exit 1
+          fi
+
+          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            echo "DRY RUN: Would have deleted the variables listed above. No changes made."
+          else
+            echo "APPLY MODE: Deleting stale variables..."
+            echo "$STALE_VARS" | while read -r variable; do
+              gh variable delete "$variable" --org "$ORG_NAME"
+              echo "Deleted variable: $variable"
+            done
+            echo "✅ Cleanup complete."
+          fi
