@@ -46,7 +46,7 @@ jobs:
           echo "### Syncing Variables ###"
           
           # If dry_run is true, simulate the changes
-          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+          if [ "${{ inputs.dry_run }}" == "true" ]; then
             echo "DRY RUN MODE: Checking which variables would be created or updated."
             
             # Get all remote variables once to avoid multiple API calls
@@ -84,7 +84,7 @@ jobs:
         run: |
           echo "### Syncing Secrets ###"
 
-          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+          if [ "${{ inputs.dry_run }}" == "true" ]; then
             echo "DRY RUN MODE: Checking which secrets would be created or updated."
 
             # Get the list of remote secret names
@@ -152,7 +152,7 @@ jobs:
             exit 1
           fi
 
-          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+          if [ "${{ inputs.dry_run }}" == "true" ]; then
             echo "DRY RUN: Would have deleted the secrets listed above. No changes made."
           else
             echo "APPLY MODE: Deleting stale secrets..."
@@ -185,7 +185,7 @@ jobs:
             exit 1
           fi
 
-          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+          if [ "${{ inputs.dry_run }}" == "true" ]; then
             echo "DRY RUN: Would have deleted the variables listed above. No changes made."
           else
             echo "APPLY MODE: Deleting stale variables..."
