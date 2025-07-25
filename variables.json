@@ -1,6 +1,5 @@
 {
   "APP_ENV": "develop",
   "FEATURE_FLAG": "true",
-  "MAX_CONNECTIONS": "135",
   "GIOVANNI":"MUCCIACCIA"
 }

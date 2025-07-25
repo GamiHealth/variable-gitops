@@ -1,9 +1,6 @@
 name: Sync GitHub Org Secrets and Variables
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       enable_cleanup:
@@ -13,7 +10,7 @@ on:
         default: false
       dry_run:
         type: boolean
-        description: 'Log actions without deleting. (Strongly recommended for cleanup)'
+        description: 'Dry run'
         required: true
         default: true
 
