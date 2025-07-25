@@ -10,7 +10,7 @@ on:
         default: true
       enable_cleanup:
         type: boolean
-        description: '⚠️ DANGER: Enable CLEANUP'
+        description: '⚠️ DANGER: CLEANUP STALE VAR/SECRETS'
         required: true
         default: false
 
@@ -127,7 +127,6 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Cleanup Stale Organization Secrets
-        if: github.event.inputs.enable_cleanup == true
         run: |
           echo "### Starting Secret Cleanup ###"
           
