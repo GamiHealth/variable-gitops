@@ -32,17 +32,14 @@ jobs:
       - name: Check config files
         id: check-configs
         run: |
-          echo "Checking config files..."
-          VAR_FILE="variables.json"
-          SECRETS_FILE="secrets.json"
-          if [ ! -f "$VAR_FILE" ]; then
-            echo "❌ variables.json file was not found. Stopping workflow execution."
-            exit 1
-          fi
-          if [ ! -f "$SECRETS_FILE" ]; then
-            echo "❌ secrets.json file was not found. Stopping workflow execution."
-            exit 1
-          fi
+          echo "Checking for required configuration files..."
+          for file in variables.json secrets.json; do
+            if [ ! -f "$file" ]; then
+              echo "❌ ERROR: Required file '$file' was not found. Stopping workflow."
+              exit 1
+            fi
+          done
+          echo "✅ All config files are present."
 
       - name: Sync Variables from variables.json
         run: |
