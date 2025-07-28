@@ -123,6 +123,39 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Cleanup Stale Organization Variables
+        run: |
+          echo "### Starting Variable Cleanup ###"
+          
+          LOCAL_VARS=$(jq -r 'keys | .[]' variables.json | sort)
+          REMOTE_VARS=$(gh variable list --org "$ORG_NAME" --json name -q '.[].name' | sort)
+          STALE_VARS=$(comm -13 <(echo "$LOCAL_VARS") <(echo "$REMOTE_VARS"))
+
+          if [ -z "$STALE_VARS" ]; then
+            echo "✅ No stale variables found. All good!"
+            exit 0
+          fi
+
+          echo "Found the following stale variables to be deleted:"
+          echo "$STALE_VARS"
+          
+          STALE_COUNT=$(echo "$STALE_VARS" | wc -l)
+          if [ "$STALE_COUNT" -gt 5 ]; then
+            echo "❌ SAFETY NET: Attempting to delete $STALE_COUNT variables, which is over the threshold of 5. Aborting."
+            exit 1
+          fi
+
+          if [ "${{ inputs.dry_run }}" == "true" ]; then
+            echo "DRY RUN: Would have deleted the variables listed above. No changes made."
+          else
+            echo "APPLY MODE: Deleting stale variables..."
+            echo "$STALE_VARS" | while read -r variable; do
+              gh variable delete "$variable" --org "$ORG_NAME"
+              echo "Deleted variable: $variable"
+            done
+            echo "✅ Cleanup complete."
+          fi
+
       - name: Cleanup Stale Organization Secrets
         run: |
           echo "### Starting Secret Cleanup ###"
@@ -159,39 +192,6 @@ jobs:
             echo "$STALE_SECRETS" | while read -r secret; do
               gh secret delete "$secret" --org "$ORG_NAME"
               echo "Deleted secret: $secret"
-            done
-            echo "✅ Cleanup complete."
-          fi
-
-      - name: Cleanup Stale Organization Variables
-        run: |
-          echo "### Starting Variable Cleanup ###"
-          
-          LOCAL_VARS=$(jq -r 'keys | .[]' variables.json | sort)
-          REMOTE_VARS=$(gh variable list --org "$ORG_NAME" --json name -q '.[].name' | sort)
-          STALE_VARS=$(comm -13 <(echo "$LOCAL_VARS") <(echo "$REMOTE_VARS"))
-
-          if [ -z "$STALE_VARS" ]; then
-            echo "✅ No stale variables found. All good!"
-            exit 0
-          fi
-
-          echo "Found the following stale variables to be deleted:"
-          echo "$STALE_VARS"
-          
-          STALE_COUNT=$(echo "$STALE_VARS" | wc -l)
-          if [ "$STALE_COUNT" -gt 5 ]; then
-            echo "❌ SAFETY NET: Attempting to delete $STALE_COUNT variables, which is over the threshold of 5. Aborting."
-            exit 1
-          fi
-
-          if [ "${{ inputs.dry_run }}" == "true" ]; then
-            echo "DRY RUN: Would have deleted the variables listed above. No changes made."
-          else
-            echo "APPLY MODE: Deleting stale variables..."
-            echo "$STALE_VARS" | while read -r variable; do
-              gh variable delete "$variable" --org "$ORG_NAME"
-              echo "Deleted variable: $variable"
             done
             echo "✅ Cleanup complete."
           fi
