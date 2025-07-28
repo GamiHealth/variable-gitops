@@ -10,36 +10,44 @@ on:
         default: true
       enable_cleanup:
         type: boolean
-        description: '⚠️ DANGER: CLEANUP STALE VAR/SECRETS'
+        description: '⚠️ DANGER: Check to clean up stale variables'
         required: true
         default: false
 
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    runs-on: 
+      group: ${{format('idp-{0}-gha-runner-group', inputs.environment)}}
     env:
       GH_TOKEN: ${{ secrets.ORG_PAT }}
-      ORG_NAME: "GamiHealth" # Your organization name
+      ORG_NAME: "Sisal-Org" # Your organization name
     steps:
+      
+      - name: Generate WF token
+        id: generate_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.WORKFLOW_ACTION_APP_ID }}
+          private-key: ${{ secrets.WORKFLOW_ACTION_KEY }}
+          owner: ${{ github.repository_owner }}
+
       - name: Checkout repository
         uses: actions/checkout@v4
-
-        ## NOT NEEDED ON SISAL
-      - name: Install dependencies
-        run: |
-          sudo apt-get update && sudo apt-get install -y jq
 
       - name: Check config files
         id: check-configs
         run: |
           echo "Checking for required configuration files..."
-          for file in variables.json secrets.json; do
-            if [ ! -f "$file" ]; then
-              echo "❌ ERROR: Required file '$file' was not found. Stopping workflow."
-              exit 1
-            fi
-          done
-          echo "✅ All config files are present."
+          if [ ! -f "variables.json" ]; then
+            echo "❌ ERROR: Required file 'variables.json' was not found. Stopping workflow."
+            exit 1
+          fi
+          echo "✅ Config file is present."
 
       - name: Sync Variables from variables.json
         run: |
@@ -80,46 +88,23 @@ jobs:
             echo "✅ All variables have been synced successfully."
           fi
 
-      - name: Sync Secrets from secrets.json
-        run: |
-          echo "### Syncing Secrets ###"
-
-          if [ "${{ inputs.dry_run }}" == "true" ]; then
-            echo "DRY RUN MODE: Checking which secrets would be created or updated."
-
-            # Get the list of remote secret names
-            REMOTE_SECRETS=$(gh secret list --org "$ORG_NAME" --json name -q '.[].name' | sort)
-
-            jq -r 'keys | .[]' secrets.json | while read -r SECRET_NAME; do
-              # Check if the secret exists remotely
-              if echo "$REMOTE_SECRETS" | grep -q "^${SECRET_NAME}$"; then
-                # Note: We can't check secret values, so we just report an update.
-                echo "DRY RUN: Would UPDATE secret '$SECRET_NAME'."
-              else
-                echo "DRY RUN: Would CREATE secret '$SECRET_NAME'."
-              fi
-            done
-
-          else
-            echo "APPLY MODE: Creating or updating secrets."
-            jq -c '. | to_entries[]' secrets.json | while read -r entry; do
-              SECRET_NAME=$(echo "$entry" | jq -r '.key')
-              SECRET_VALUE=$(echo "$entry" | jq -r '.value')
-              echo "🔐 Syncing organization secret: $SECRET_NAME"
-              echo "$SECRET_VALUE" | gh secret set "$SECRET_NAME" --org "$ORG_NAME" --body -
-            done
-            echo "✅ All secrets have been synced successfully."
-          fi
-
   cleanup-stale-items:
-    # This job only runs if the user explicitly enables it.
     if: ${{ inputs.enable_cleanup == true }}
-    needs: sync # Assumes your previous jobs are named this
+    needs: sync
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.ORG_PAT }}
       ORG_NAME: "GamiHealth" # Your organization name
     steps:
+
+      - name: Generate WF token
+        id: generate_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.WORKFLOW_ACTION_APP_ID }}
+          private-key: ${{ secrets.WORKFLOW_ACTION_KEY }}
+          owner: ${{ github.repository_owner }}
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -152,46 +137,6 @@ jobs:
             echo "$STALE_VARS" | while read -r variable; do
               gh variable delete "$variable" --org "$ORG_NAME"
               echo "Deleted variable: $variable"
-            done
-            echo "✅ Cleanup complete."
-          fi
-
-      - name: Cleanup Stale Organization Secrets
-        run: |
-          echo "### Starting Secret Cleanup ###"
-          
-          # 1. Get secrets defined in the local file
-          LOCAL_SECRETS=$(jq -r 'keys | .[]' secrets.json | sort)
-          
-          # 2. Get secrets that currently exist in the GitHub organization
-          REMOTE_SECRETS=$(gh secret list --org "$ORG_NAME" --json name -q '.[].name' | sort)
-          
-          # 3. Find secrets that exist remotely but not locally (using 'comm' utility)
-          STALE_SECRETS=$(comm -13 <(echo "$LOCAL_SECRETS") <(echo "$REMOTE_SECRETS"))
-          
-          if [ -z "$STALE_SECRETS" ]; then
-            echo "✅ No stale secrets found. All good!"
-            exit 0
-          fi
-          
-          echo "Found the following stale secrets to be deleted:"
-          echo "$STALE_SECRETS"
-          
-          # 4. Sanity Check: Fail if we are about to delete more than 5 secrets
-          # This prevents accidental mass-deletion. Adjust the threshold as needed.
-          STALE_COUNT=$(echo "$STALE_SECRETS" | wc -l)
-          if [ "$STALE_COUNT" -gt 5 ]; then
-            echo "❌ SAFETY NET: Attempting to delete $STALE_COUNT secrets, which is over the threshold of 5. Aborting."
-            exit 1
-          fi
-
-          if [ "${{ inputs.dry_run }}" == "true" ]; then
-            echo "DRY RUN: Would have deleted the secrets listed above. No changes made."
-          else
-            echo "APPLY MODE: Deleting stale secrets..."
-            echo "$STALE_SECRETS" | while read -r secret; do
-              gh secret delete "$secret" --org "$ORG_NAME"
-              echo "Deleted secret: $secret"
             done
             echo "✅ Cleanup complete."
           fi
